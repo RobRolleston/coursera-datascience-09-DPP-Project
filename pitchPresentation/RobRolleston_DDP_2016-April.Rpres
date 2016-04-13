@@ -1,0 +1,101 @@
+Exploring the height and weight of grade school children
+========================================================
+author: Rob Rolleston
+date: Developing Data Products: 2016-April
+width: 1024
+height: 768
+
+Motivation & Data
+========================================================
+
+## At what grade do the heights and weights of boys and girls become statistically different?
+
+The original data for this exploration comes from the __gcookbook::heightweight__ data set within the <https://cran.r-project.org/web/packages/gcookbook/index.html> package.
+```{r echo=FALSE}
+library(ggplot2)
+library(dplyr)
+library(gcookbook)
+library(shiny)
+data <- gcookbook::heightweight
+```
+
+The data consists of `r nrow(data)` observations of
+
+- sex (factor with levels: `r levels(data$sex)`)
+- ageYear (range: `r range(data$ageYear)`)
+- ageMonth (range: `r range(data$ageMonth)`)
+- heightIn (range: `r range(data$heightIn)`)
+- weightLb (range: `r range(data$weightLb)`)
+
+Data Preparation
+=========================================================
+The fields `ageMonth` and `ageYear` are redundant. and instead of using either of these , a new variable was created: 'grade'
+```{r}
+data$grade <- as.factor(round(data$ageYear) - 6)
+```
+This was used as approximation to the true grade, and will become the primary factor in the analysis for looking at age differences.
+
+In addition, the _Standard Error_ and _95% Confidence Interval_ were calculated for each grade by sex.
+```{r echo=FALSE}
+data.summary <- data %>% group_by(grade,sex) %>% 
+  summarise(avgAge=mean(ageYear),
+            avgHeight=mean(heightIn),
+            avgWeight=mean(weightLb),
+            sdHeight=sd(heightIn),
+            sdWeight=sd(weightLb),
+            n=n())
+data.summary$SEHeight <- data.summary$sdHeight / sqrt(data.summary$n)
+data.summary$SEWeight <- data.summary$sdWeight / sqrt(data.summary$n)
+data.summary$CIHeight <- data.summary$SEHeight * qt(.975, data.summary$n-1)
+data.summary$CIWeight <- data.summary$SEWeight * qt(.975, data.summary$n-1)
+```
+
+Exploring Height by Sex
+=========================================================
+left: 60%
+
+Shown on the right are bar plots of the average Height(In) for each grade, for each sex along with a jittered set of data points.  Two observation are made:
+
+1. Because of missing data, grades '11' and '12' will not be used
+2. At this scale there is very little visible difference in the average height for each grade.
+
+A proper statistical _t_-test will be used to examine differences in these means.
+
+***
+```{r echo=FALSE}
+g <- ggplot(data = data, aes(x=sex, y=heightIn, fill=sex)) +
+  geom_bar(stat="summary", fun.y = "mean", alpha=0.5) +
+  geom_point(alpha=0.25) + geom_jitter(width=.8) +
+  facet_wrap(~grade) +
+  ggtitle("Height (In)")
+g
+```
+
+Mean Height and Density Function
+=========================================================
+left: 40%
+
+A plot of the mean, with 95%CI indicate there are likely statistically significant differences at the higher grades.
+
+```{r echo=FALSE}
+g <- ggplot(data = filter(data.summary, grade %in% c("6","7","8","9","10")), aes(x=sex, y=avgHeight)) +
+  geom_point() + 
+  geom_errorbar(aes(ymin=avgHeight-CIHeight, ymax=avgHeight+CIHeight), 
+                colour="black", width=.8) +
+  facet_wrap(~grade)+
+  ggtitle("Mean Height +/- 95% CI")
+g
+```
+
+***
+
+Application will allow exploration of Density Functions & Means by grade. <http://robrolleston.shinyapps.io/RobRolleston_DDP_2016-April/> along with the calcuated _p_-value of the _t_-test.
+
+```{r echo=FALSE}
+dataMeans <- data %>% group_by(sex) %>% summarise(avg = mean(heightIn))
+g<- ggplot(data=data, aes(x=heightIn, fill=sex)) +
+  geom_density(alpha=0.3) +
+  geom_vline(data=dataMeans, aes(xintercept=avg, color=sex), linetype="dashed", size=1) +
+  xlab("Height (In)")
+g
+```
